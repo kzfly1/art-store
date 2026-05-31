@@ -1,0 +1,142 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum ArtworkStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum OriginalStatus {
+  AVAILABLE
+  RESERVED
+  SOLD
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  SHIPPED
+  COMPLETED
+  CANCELLED
+}
+
+// ─── Artwork ─────────────────────────────────────────────────────────────────
+
+model Artwork {
+  id          String        @id @default(cuid())
+  slug        String        @unique
+  title       String
+  description String?
+  medium      String?
+  dimensions  String?
+  year        Int?
+  status      ArtworkStatus @default(DRAFT)
+  images      Image[]
+  original    Original?
+  prints      Print?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@map("artworks")
+}
+
+model Image {
+  id           String   @id @default(cuid())
+  artworkId    String
+  artwork      Artwork  @relation(fields: [artworkId], references: [id], onDelete: Cascade)
+  cloudinaryId String
+  url          String
+  width        Int
+  height       Int
+  isPrimary    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@map("images")
+}
+
+// ─── Original Listing ────────────────────────────────────────────────────────
+
+model Original {
+  id         String         @id @default(cuid())
+  artworkId  String         @unique
+  artwork    Artwork        @relation(fields: [artworkId], references: [id], onDelete: Cascade)
+  price      Decimal        @db.Decimal(10, 2)
+  status     OriginalStatus @default(AVAILABLE)
+  reservedAt DateTime?
+  soldAt     DateTime?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@map("originals")
+}
+
+// ─── Print Listing ───────────────────────────────────────────────────────────
+
+model Print {
+  id        String         @id @default(cuid())
+  artworkId String         @unique
+  artwork   Artwork        @relation(fields: [artworkId], references: [id], onDelete: Cascade)
+  variants  PrintVariant[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@map("prints")
+}
+
+model PrintVariant {
+  id             String      @id @default(cuid())
+  printId        String
+  print          Print       @relation(fields: [printId], references: [id], onDelete: Cascade)
+  size           String      // e.g. "A4", "A3", "A2"
+  paper          String      // e.g. "Matte", "Glossy", "Fine Art"
+  price          Decimal     @db.Decimal(10, 2)
+  stock          Int         @default(0)
+  stripePriceId  String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  orderItems     OrderItem[]
+
+  @@unique([printId, size, paper])
+  @@map("print_variants")
+}
+
+// ─── Order ───────────────────────────────────────────────────────────────────
+
+model Order {
+  id                    String      @id @default(cuid())
+  status                OrderStatus @default(PENDING)
+  stripeSessionId       String?     @unique
+  customerEmail         String
+  customerName          String
+  shippingAddress       Json
+  items                 OrderItem[]
+  subtotal              Decimal     @db.Decimal(10, 2)
+  total                 Decimal     @db.Decimal(10, 2)
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id             String        @id @default(cuid())
+  orderId        String
+  order          Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  printVariantId String?
+  printVariant   PrintVariant? @relation(fields: [printVariantId], references: [id])
+  description    String        // snapshot: "Title - A3 Matte" or "Title (Original)"
+  quantity       Int
+  unitPrice      Decimal       @db.Decimal(10, 2)
+  createdAt      DateTime      @default(now())
+
+  @@map("order_items")
+}
